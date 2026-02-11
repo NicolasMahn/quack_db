@@ -1,0 +1,8 @@
+# RAG database configuration
+
+# ChromaDB collection names (add your collections here)
+collections:
+  - default
+  - test
+
+default_collection: test
