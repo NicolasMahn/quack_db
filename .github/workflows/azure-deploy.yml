@@ -119,7 +119,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: ${{ needs.build-and-push.outputs.target_env }}
     steps:
       - name: Normalize ACR name
         run: |

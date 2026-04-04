@@ -31,7 +31,7 @@ Uses **OpenID Connect** to Azure (`azure/login@v2`)—no long-lived service prin
 
 - **Secrets:** Same repository secrets as `deploy.yml` for Azure auth and ACR: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, **`ACR_NAME`** (registry resource name only—5–50 alphanumeric chars; optional `.azurecr.io` suffix is stripped). Plus `API_KEYS`, `API_INGEST_KEYS`, `AZURE_OPENAI_API_KEY`, `UI_API_CLIENT_KEY`, and any others referenced in the workflow.
 - **Variables:** `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `AZURE_CONTAINERAPPS_ENV`, `APP_NAME_CHROMA`, `APP_NAME_API`, `APP_NAME_UI`, plus the `vars.*` used in API/UI env blocks (OpenAI, Chroma host, Entra, etc.).
-- **GitHub Environments:** the `deploy` job uses `environment: dev` or `prod`. Create those environments in **GitHub → Settings → Environments** if you use manual dispatch.
+- **Dev vs prod** is chosen in the workflow inputs (`environment`) and passed to Azure as `APP_ENV` / image tags only. The **`deploy` job does not use a GitHub Environment** on purpose, so OIDC matches the same federated credential as `build-and-push` (branch subject, e.g. `repo:OWNER/REPO:ref:refs/heads/main`). If you add `environment: prod` to `deploy` later (for approvals / env-scoped secrets), you must add Entra federated credentials for `repo:OWNER/REPO:environment:prod` (and `environment:dev`) or login will fail with **AADSTS700213**.
 
 ### Federated credentials (OIDC) — required for both workflows
 
@@ -40,17 +40,19 @@ If `azure/login` fails with **AADSTS70025** (“client has no configured federat
 1. **Entra ID → App registrations →** your app → **Certificates & secrets → Federated credentials → Add credential.**
 2. **Federated credential scenario:** GitHub Actions deploying Azure resources.
 3. **Organization / repository:** your GitHub org or user and repo name (must match where the workflow runs).
-4. **Entity type:** Branch, tag, or pull request — for runs triggered from `main`, use branch `main`. If you start the workflow from another branch, add a matching federated credential for that ref. The **`deploy`** job uses GitHub **Environments** (`dev` / `prod`): add federated credentials for `repo:OWNER/REPO:environment:dev` and `environment:prod` as well.
+4. **Entity type:** Branch, tag, or pull request — for runs triggered from `main`, use branch `main`. If you start the workflow from another branch, add a matching federated credential for that ref.
 
 **Subject identifiers** GitHub sends (add one federated credential per subject you need):
 
 | When | Example subject identifier |
 | ---- | ------------------------- |
-| Job has **no** GitHub Environment (e.g. `build-and-push` in `azure-deploy.yml`) | `repo:OWNER/REPO:ref:refs/heads/main` |
-| Job uses **GitHub Environment** `prod` (e.g. `deploy` in `azure-deploy.yml`) | `repo:OWNER/REPO:environment:prod` |
-| Same for `dev` | `repo:OWNER/REPO:environment:dev` |
+| Jobs **without** a GitHub `environment:` key (current `azure-deploy.yml` for both jobs) | `repo:OWNER/REPO:ref:refs/heads/main` |
+| A job **with** `environment: prod` in the workflow | `repo:OWNER/REPO:environment:prod` |
+| Same for `environment: dev` | `repo:OWNER/REPO:environment:dev` |
 
-Replace `OWNER/REPO` with your real path (case-sensitive). If `build-and-push` passes but `deploy` fails with an auth error, add the **environment** subjects for `dev` and `prod`.
+Replace `OWNER/REPO` with your real path (case-sensitive).
+
+**AADSTS700213** (“No matching federated identity record… **environment:prod**”): the failing job used a GitHub **Environment**, so the token subject is `repo:…:environment:…`. Either add that exact subject in Entra **or** remove `environment:` from the job (as in the current workflow) so only the **branch** credential is required.
 
 Then grant that app's **enterprise application** (service principal) **AcrPush** on the registry and rights to create/update Container Apps and resource groups as needed (`azure-deploy.yml` creates the RG and Container Apps environment if missing).
 
