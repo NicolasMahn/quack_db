@@ -38,7 +38,7 @@ env:
   AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
   AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
   AZURE_CONTAINERAPPS_ENV: ${{ vars.AZURE_CONTAINERAPPS_ENV }}
-  AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+  ACR_NAME: ${{ secrets.ACR_NAME }}
   APP_NAME_CHROMA: ${{ vars.APP_NAME_CHROMA }}
   APP_NAME_API: ${{ vars.APP_NAME_API }}
   APP_NAME_UI: ${{ vars.APP_NAME_UI }}
@@ -68,6 +68,20 @@ jobs:
             echo "target_env=prod" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Normalize ACR name
+        run: |
+          set -euo pipefail
+          raw="${ACR_NAME:-}"
+          name="${raw#https://}"
+          name="${name#http://}"
+          name="${name%.azurecr.io}"
+          name="${name%/}"
+          if [[ ! "$name" =~ ^[a-zA-Z0-9]{5,50}$ ]]; then
+            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters (see deploy.yml). We strip .azurecr.io if present. After normalizing: '${name:-empty}'"
+            exit 1
+          fi
+          echo "ACR_NAME=$name" >> "$GITHUB_ENV"
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -76,13 +90,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR login
-        run: az acr login --name "$AZURE_ACR_NAME"
+        run: az acr login --name "$ACR_NAME"
 
       - name: Build and push API + UI images
         id: images
         run: |
           set -euo pipefail
-          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
+          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
           SHORT_SHA="${GITHUB_SHA::7}"
           TARGET_ENV="${{ steps.target.outputs.target_env }}"
 
@@ -103,6 +117,20 @@ jobs:
     needs: build-and-push
     environment: ${{ needs.build-and-push.outputs.target_env }}
     steps:
+      - name: Normalize ACR name
+        run: |
+          set -euo pipefail
+          raw="${ACR_NAME:-}"
+          name="${raw#https://}"
+          name="${name#http://}"
+          name="${name%.azurecr.io}"
+          name="${name%/}"
+          if [[ ! "$name" =~ ^[a-zA-Z0-9]{5,50}$ ]]; then
+            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters. After normalizing: '${name:-empty}'"
+            exit 1
+          fi
+          echo "ACR_NAME=$name" >> "$GITHUB_ENV"
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
@@ -182,9 +210,9 @@ jobs:
         run: |
           set -euo pipefail
           API_IMAGE="${{ needs.build-and-push.outputs.api_image }}"
-          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
-          ACR_USER="$(az acr credential show --name "$AZURE_ACR_NAME" --query username -o tsv)"
-          ACR_PASS="$(az acr credential show --name "$AZURE_ACR_NAME" --query 'passwords[0].value' -o tsv)"
+          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
+          ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 
           API_KEYS_RAW="${{ secrets.API_KEYS }}"
           API_INGEST_KEYS_RAW="${{ secrets.API_INGEST_KEYS }}"
@@ -250,9 +278,9 @@ jobs:
         run: |
           set -euo pipefail
           UI_IMAGE="${{ needs.build-and-push.outputs.ui_image }}"
-          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
-          ACR_USER="$(az acr credential show --name "$AZURE_ACR_NAME" --query username -o tsv)"
-          ACR_PASS="$(az acr credential show --name "$AZURE_ACR_NAME" --query 'passwords[0].value' -o tsv)"
+          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
+          ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 
           API_CLIENT_KEY_RAW="${{ secrets.UI_API_CLIENT_KEY }}"
           if az containerapp show --name "$APP_NAME_UI" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then

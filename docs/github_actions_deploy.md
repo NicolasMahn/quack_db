@@ -20,6 +20,7 @@ Add these repository secrets:
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
+- `ACR_NAME` (Container Registry resource name, no `.azurecr.io`; same as `deploy.yml`)
 - `AZURE_OPENAI_API_KEY`
 - `API_KEYS`
 - `API_INGEST_KEYS`
@@ -32,7 +33,6 @@ Add these repository variables:
 - `AZURE_RESOURCE_GROUP`
 - `AZURE_LOCATION`
 - `AZURE_CONTAINERAPPS_ENV`
-- `AZURE_ACR_NAME`
 - `APP_NAME_CHROMA`
 - `APP_NAME_API`
 - `APP_NAME_UI`
