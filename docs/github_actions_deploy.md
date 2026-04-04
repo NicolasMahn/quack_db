@@ -28,7 +28,7 @@ Add these repository secrets:
 
 ## 3) Required GitHub Variables
 
-Add these repository variables:
+Add these as **repository** variables (**Settings → Secrets and variables → Actions → Variables**). Values stored only under GitHub **Environments** are **not** visible to this workflow (jobs do not use `environment:` so OIDC stays branch-based).
 
 - `AZURE_RESOURCE_GROUP`
 - `AZURE_LOCATION`
@@ -36,6 +36,8 @@ Add these repository variables:
 - `APP_NAME_CHROMA`
 - `APP_NAME_API`
 - `APP_NAME_UI`
+
+Optional: if **dev** vs **prod** targets different RGs or app names, add repository variables `*_DEV` and `*_PROD` for any of the above (see `.github/README.md`).
 
 API runtime vars:
 - `AZURE_OPENAI_ENDPOINT`
@@ -72,9 +74,8 @@ Deploys are **manual** only (`workflow_dispatch`).
 
 ## 5) Suggested protection
 
-- Use GitHub Environments (`dev`, `prod`) with approval rules.
-- Limit who can trigger `prod` deployment.
-- Keep students on `dev` deployments only.
+- Restrict who can run **Actions** or approve deployments (branch protection, environment approvals only apply if you add `environment:` to jobs and matching Entra federated credentials).
+- Use different Azure resource names per tier via optional `*_DEV` / `*_PROD` repository variables.
 
 ## 6) Post-deploy checks
 
