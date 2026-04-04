@@ -13,6 +13,8 @@ def validate(user: Annotated[User, Depends(require_user)]):
     return {
         "valid": True,
         "user_id": str(user.id),
+        "email": user.email,
+        "entra_oid": user.entra_oid,
         "tier": user.tier,
         "is_dev_student": user.is_dev_student,
         "is_dev_admin": user.is_dev_admin,

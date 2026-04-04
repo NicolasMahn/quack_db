@@ -1,39 +1,94 @@
 # CI/CD
 
+Use **GitHub → Settings → Secrets and variables → Actions**. **Secrets** = sensitive; **Variables** = non-sensitive. Define **Variables** at **repository** scope (not only GitHub *Environments*) so OIDC can stay branch-based—see [OIDC](#federated-credentials-oidc).
+
+---
+
 ## `ci.yml`
 
 Runs on every **push** to `main` and on **pull requests**:
 
-- `ruff check` on `src`, `api`, `tests`
-- `pytest`
+- `python -m ruff check` on `src`, `api`, `src/tests`
+- `python -m pytest`
 - `docker build -f api/Dockerfile` (smoke)
 
-## `deploy.yml` (Deploy API)
+**No GitHub secrets or variables required.**
 
-**Manual only** (`workflow_dispatch`). Builds `api/Dockerfile`, pushes `quack-api` to ACR, updates one API Container App.
+---
 
-Uses **OpenID Connect** to Azure (`azure/login@v2`)—no long-lived service principal secret in GitHub if you use **federated credentials** on the app registration (see below).
-
-### GitHub repository secrets (`deploy.yml`)
+## GitHub **Secrets** checklist (`azure-deploy.yml`)
 
 | Secret | Purpose |
 | ------ | ------- |
-| `AZURE_CLIENT_ID` | App registration **application (client) ID** used by the workflow |
-| `AZURE_TENANT_ID` | Azure AD tenant ID |
-| `AZURE_SUBSCRIPTION_ID` | Subscription containing ACR and Container Apps |
-| `ACR_NAME` | Azure Container Registry name (no `.azurecr.io`) |
-| `ACA_RESOURCE_GROUP` | Resource group that contains the **API** Container App |
-| `ACA_API_APP_NAME` | Name of the **API** Container App resource |
+| `AZURE_CLIENT_ID` | Entra app registration **Application (client) ID** (OIDC) |
+| `AZURE_TENANT_ID` | Entra **Directory (tenant) ID** |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription GUID |
+| `ACR_NAME` | Container Registry **name** only (alphanumeric, 5–50 chars; no `.azurecr.io`) |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI (`azure-openai-api-key`) |
+
+**Not applied by these workflows** (set on the Container App or elsewhere): e.g. **`DATABASE_URL`** only if you override the image default (SQLite under `/app/data`), **`CHROMADB_AUTH_TOKEN`**, **`ADMIN_BOOTSTRAP_KEY`**—see [chromadb/AZURE.md](../chromadb/AZURE.md) and [api/README.md](../api/README.md).
+
+Auth is **Microsoft Entra JWT** only (`Authorization: Bearer`). Register an **API** app + SPA/native clients; set **Variables** below (`ENTRA_*`). Do **not** expose Chroma publicly—the API remains the only gateway to Chroma and to Postgres-backed users/authz.
+
+---
+
+## GitHub **Variables** checklist
+
+**Repository** variables. Optional **`_DEV` / `_PROD`** overrides apply when the workflow **Target environment** is `dev` or `prod`; if an override is empty, the unsuffixed name is used.
+
+### Azure layout (required)
+
+| Variable | Purpose |
+| -------- | ------- |
+| `AZURE_RESOURCE_GROUP` | Resource group for Container Apps |
+| `AZURE_LOCATION` | Azure region (e.g. `westeurope`) |
+| `AZURE_CONTAINERAPPS_ENV` | Container Apps **environment** resource name |
+| `APP_NAME_CHROMA` | Container App name for Chroma |
+| `APP_NAME_API` | Container App name for API |
+| `APP_NAME_UI` | Container App name for UI |
+
+If you still have old secrets **`ACA_RESOURCE_GROUP`** / **`ACA_API_APP_NAME`**, copy their values into **`AZURE_RESOURCE_GROUP`** / **`APP_NAME_API`** variables, then delete those secrets—they are not read by the workflow.
+
+**Optional:** `AZURE_RESOURCE_GROUP_DEV`, `AZURE_RESOURCE_GROUP_PROD`, `AZURE_LOCATION_DEV`, `AZURE_LOCATION_PROD`, `AZURE_CONTAINERAPPS_ENV_DEV`, `AZURE_CONTAINERAPPS_ENV_PROD`, `APP_NAME_CHROMA_DEV` / `_PROD`, `APP_NAME_API_DEV` / `_PROD`, `APP_NAME_UI_DEV` / `_PROD`.
+
+### API Container App (non-secret env)
+
+**Important:** `azure-deploy.yml` always pushes these names to the Container App. If a **GitHub Variable is missing**, Actions expands it to **empty**, which **overrides** defaults in [`quack_db.config.Settings`](../src/quack_db/config.py) / [`.env.example`](../.env.example). For Azure, **set variables explicitly**.
+
+| Variable | Set in Azure? | Default if unset | Notes |
+| -------- | ------------- | ---------------- | ----- |
+| `AZURE_OPENAI_ENDPOINT` | **Yes** in prod | example placeholder | Your Azure OpenAI resource URL. |
+| `CHROMADB_HOST` | **Yes** | `localhost` | Internal Chroma hostname/FQDN in ACA. |
+| `CHROMADB_PORT` | Recommended | `8000` | |
+| `ENTRA_JWKS_URL` | **Yes** | `""` | e.g. `https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys` |
+| `ENTRA_AUDIENCE` | **Yes** | `""` | API app scope / Application ID URI audience. |
+| `ENTRA_ISSUER` | **Yes** | `""` | e.g. `https://login.microsoftonline.com/<tenant-id>/v2.0` |
+| `ENTRA_AUTO_PROVISION_TIER` | Optional | `""` | If set (e.g. `everyone`), first Entra login creates a DB user with that tier. Empty = admin must pre-create users by email. |
+| `AUTH_DISABLED` | **Never in prod** | `false` | If `true`, API uses `DEV_IMPERSONATE_USER_EMAIL` (local dev only). |
+| `DEV_IMPERSONATE_USER_EMAIL` | With `AUTH_DISABLED` | `""` | Existing `users.email` row to impersonate. |
+
+### UI Container App (if you deploy UI)
+
+Workflow sets container env `API_BASE_URL` from **`UI_API_BASE_URL`**.
+
+| Variable | Set in Azure? | Default in [`app_config.py`](../app_config.py) if env is **unset** | Notes |
+| -------- | ------------- | -------------------------------------------------------------------- | ----- |
+| `UI_API_BASE_URL` | **Yes** | `http://127.0.0.1:8001` | Public `https://…` URL of the **API** Container App. |
+| `ENABLE_UI_INGEST` | Optional | `false` | |
+| `COLLECTIONS` | Optional | `test` | CSV |
+| `DEFAULT_COLLECTION` | Optional | first entry of `COLLECTIONS` or `test` | |
+
+---
 
 ## `azure-deploy.yml` (Azure Deploy)
 
-**Manual only** (`workflow_dispatch`): choose `dev` / `prod` and toggles **Deploy Chroma / API / UI**. Builds and pushes only what you enable (API uses `api/Dockerfile`; UI uses `Dockerfile.ui` and requires a `./ui` directory). Can create RG and Container Apps environment, then deploys selected apps with env vars and secrets.
+**Manual only** (`workflow_dispatch`): **Target environment** `dev` / `prod` and toggles **Deploy Chroma / API / UI**. Builds only what you enable (`api/Dockerfile`; UI needs `./ui`). Image tags look like `quack-api:{env}-{shortSha}`.
 
-- **Secrets:** Same repository secrets as `deploy.yml` for Azure auth and ACR: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, **`ACR_NAME`** (registry resource name only—5–50 alphanumeric chars; optional `.azurecr.io` suffix is stripped). Plus `API_KEYS`, `API_INGEST_KEYS`, `AZURE_OPENAI_API_KEY`, `UI_API_CLIENT_KEY`, and any others referenced in the workflow.
-- **Variables (repository):** Define under **Settings → Actions → Variables** (repo scope), *not* only under GitHub **Environments**, so OIDC can stay **branch-only** (below). Required: `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `AZURE_CONTAINERAPPS_ENV`, `APP_NAME_CHROMA`, `APP_NAME_API`, `APP_NAME_UI`, plus the other `vars.*` referenced in the workflow (OpenAI, Chroma host, Entra, etc.). If **dev** and **prod** use different Azure resources, set optional repository variables `AZURE_RESOURCE_GROUP_DEV` / `_PROD`, `AZURE_LOCATION_DEV` / `_PROD`, `AZURE_CONTAINERAPPS_ENV_DEV` / `_PROD`, `APP_NAME_CHROMA_DEV` / `_PROD`, `APP_NAME_API_*`, `APP_NAME_UI_*` (when unset, the unsuffixed name applies to both).
-- **OIDC (branch only):** Both jobs use the same token subject as a normal run from a branch, e.g. `repo:OWNER/REPO:ref:refs/heads/main`. You only need that **one** federated credential (plus other branches if you dispatch from them). Using a GitHub **`environment:`** key on a job would switch the subject to `repo:…:environment:prod` and require **extra** federated credentials—this workflow avoids that on purpose.
+Configure **Secrets** and **Variables** above. Resource group, region, Container Apps environment, and `APP_NAME_*` values come **only** from **Variables**.
 
-### Federated credentials (OIDC) — required for both workflows
+**OIDC:** add a federated credential for each branch you dispatch from (e.g. `repo:OWNER/REPO:ref:refs/heads/main`). Avoid GitHub `environment:` on jobs unless you also add `repo:…:environment:*` credentials in Entra.
+
+### Federated credentials (OIDC)
 
 If `azure/login` fails with **AADSTS70025** (“client has no configured federated identity credentials”), the Entra **app registration** tied to `AZURE_CLIENT_ID` has no (matching) federated credential.
 
@@ -74,10 +129,10 @@ If the table is empty, add **Contributor** (or Reader + scoped roles) on that su
 
 Wait a few minutes after IAM changes, then re-run the workflow.
 
-### Quick outline (`deploy.yml` only)
+### Quick outline
 
-1. Create an app registration; add federated credential(s) as above (e.g. `repo:OWNER/REPO:ref:refs/heads/main` when you run the workflow from `main`; add other branches if you dispatch from them).
-2. Grant roles on the subscription or resources (ACR push, Container App update).
-3. Fill the secrets in **GitHub → Settings → Secrets and variables → Actions**.
+1. Create an Entra app registration; add a federated credential for each branch you use (e.g. `repo:OWNER/REPO:ref:refs/heads/main`).
+2. Grant that app’s service principal **Contributor** (or narrower) on the subscription / RG / ACR as needed.
+3. Add **Secrets** and **Variables** as documented above for **`azure-deploy.yml`**.
 
-See [chromadb/AZURE.md](../chromadb/AZURE.md) for full stack bring-up (Postgres, Chroma, API, env vars).
+See [chromadb/AZURE.md](../chromadb/AZURE.md) for Postgres, Chroma wiring, and Container App env not covered by the workflows.

@@ -62,7 +62,7 @@ jobs:
           name="${name%.azurecr.io}"
           name="${name%/}"
           if [[ ! "$name" =~ ^[a-zA-Z0-9]{5,50}$ ]]; then
-            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters (see deploy.yml). We strip .azurecr.io if present. After normalizing: '${name:-empty}'"
+            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters (see .github/README.md). We strip .azurecr.io if present. After normalizing: '${name:-empty}'"
             exit 1
           fi
           echo "ACR_NAME=$name" >> "$GITHUB_ENV"
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     env:
-      # Repository Variables only (branch OIDC). Per-tier overrides: *_PROD / *_DEV.
+      # Repository variables (+ optional *_DEV / *_PROD). See .github/README.md
       AZURE_RESOURCE_GROUP: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_RESOURCE_GROUP_PROD || vars.AZURE_RESOURCE_GROUP)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_RESOURCE_GROUP_DEV || vars.AZURE_RESOURCE_GROUP)) || vars.AZURE_RESOURCE_GROUP }}
       AZURE_LOCATION: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_LOCATION_PROD || vars.AZURE_LOCATION)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_LOCATION_DEV || vars.AZURE_LOCATION)) || vars.AZURE_LOCATION }}
       AZURE_CONTAINERAPPS_ENV: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_CONTAINERAPPS_ENV_PROD || vars.AZURE_CONTAINERAPPS_ENV)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_CONTAINERAPPS_ENV_DEV || vars.AZURE_CONTAINERAPPS_ENV)) || vars.AZURE_CONTAINERAPPS_ENV }}
@@ -128,7 +128,7 @@ jobs:
           for n in AZURE_RESOURCE_GROUP AZURE_LOCATION AZURE_CONTAINERAPPS_ENV APP_NAME_CHROMA APP_NAME_API APP_NAME_UI; do
             eval "v=\${$n-}"
             if [ -z "$v" ]; then
-              echo "::error::$n is empty. Set repository Actions → Variables (see .github/README.md). Values on GitHub Environments are not used by this workflow."
+              echo "::error::$n is empty. Set repository Actions → Variables (see .github/README.md)."
               exit 1
             fi
           done
@@ -142,7 +142,7 @@ jobs:
           name="${name%.azurecr.io}"
           name="${name%/}"
           if [[ ! "$name" =~ ^[a-zA-Z0-9]{5,50}$ ]]; then
-            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters. After normalizing: '${name:-empty}'"
+            echo "::error::ACR_NAME secret must be the registry resource name only: 5-50 alphanumeric characters (.github/README.md). After normalizing: '${name:-empty}'"
             exit 1
           fi
           echo "ACR_NAME=$name" >> "$GITHUB_ENV"
@@ -221,8 +221,6 @@ jobs:
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 
-          API_KEYS_RAW="${{ secrets.API_KEYS }}"
-          API_INGEST_KEYS_RAW="${{ secrets.API_INGEST_KEYS }}"
           AZURE_OPENAI_API_KEY_RAW="${{ secrets.AZURE_OPENAI_API_KEY }}"
 
           if az containerapp show --name "$APP_NAME_API" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
@@ -249,8 +247,6 @@ jobs:
             --name "$APP_NAME_API" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --secrets \
-              "api-keys=$API_KEYS_RAW" \
-              "api-ingest-keys=$API_INGEST_KEYS_RAW" \
               "azure-openai-api-key=$AZURE_OPENAI_API_KEY_RAW"
 
           az containerapp update \
@@ -263,21 +259,12 @@ jobs:
               AZURE_OPENAI_ENDPOINT="${{ vars.AZURE_OPENAI_ENDPOINT }}" \
               CHROMADB_HOST="${{ vars.CHROMADB_HOST }}" \
               CHROMADB_PORT="${{ vars.CHROMADB_PORT }}" \
-              CHROMADB_SSL="${{ vars.CHROMADB_SSL }}" \
-              RAG_EXECUTION_MODE="${{ vars.RAG_EXECUTION_MODE }}" \
-              INGEST_EXECUTION_MODE="${{ vars.INGEST_EXECUTION_MODE }}" \
-              ALLOW_PROD_INGEST="${{ vars.ALLOW_PROD_INGEST }}" \
-              API_AUTH_REQUIRED="${{ vars.API_AUTH_REQUIRED }}" \
-              API_RATE_LIMIT_PER_MINUTE="${{ vars.API_RATE_LIMIT_PER_MINUTE }}" \
-              ENTRA_AUTH_ENABLED="${{ vars.ENTRA_AUTH_ENABLED }}" \
-              ENTRA_TENANT_ID="${{ vars.ENTRA_TENANT_ID }}" \
               ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
               ENTRA_ISSUER="${{ vars.ENTRA_ISSUER }}" \
               ENTRA_JWKS_URL="${{ vars.ENTRA_JWKS_URL }}" \
-              RESTRICTED_ROLES="${{ vars.RESTRICTED_ROLES }}" \
-              INGEST_ROLES="${{ vars.INGEST_ROLES }}" \
-              API_KEYS="secretref:api-keys" \
-              API_INGEST_KEYS="secretref:api-ingest-keys" \
+              ENTRA_AUTO_PROVISION_TIER="${{ vars.ENTRA_AUTO_PROVISION_TIER }}" \
+              AUTH_DISABLED="${{ vars.AUTH_DISABLED }}" \
+              DEV_IMPERSONATE_USER_EMAIL="${{ vars.DEV_IMPERSONATE_USER_EMAIL }}" \
               AZURE_OPENAI_API_KEY="secretref:azure-openai-api-key"
 
       - name: Deploy UI
@@ -289,7 +276,6 @@ jobs:
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 
-          API_CLIENT_KEY_RAW="${{ secrets.UI_API_CLIENT_KEY }}"
           if az containerapp show --name "$APP_NAME_UI" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
             az containerapp update \
               --name "$APP_NAME_UI" \
@@ -310,11 +296,6 @@ jobs:
               --max-replicas 3
           fi
 
-          az containerapp secret set \
-            --name "$APP_NAME_UI" \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --secrets "ui-api-client-key=$API_CLIENT_KEY_RAW"
-
           az containerapp update \
             --name "$APP_NAME_UI" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -323,11 +304,7 @@ jobs:
               UI_HOST="0.0.0.0" \
               UI_PORT="$UI_PORT" \
               API_BASE_URL="${{ vars.UI_API_BASE_URL }}" \
-              RAG_EXECUTION_MODE="${{ vars.RAG_EXECUTION_MODE }}" \
-              INGEST_EXECUTION_MODE="${{ vars.INGEST_EXECUTION_MODE }}" \
               ENABLE_UI_INGEST="${{ vars.ENABLE_UI_INGEST }}" \
-              ALLOW_PROD_INGEST="${{ vars.ALLOW_PROD_INGEST }}" \
-              API_CLIENT_KEY="secretref:ui-api-client-key" \
               COLLECTIONS="${{ vars.COLLECTIONS }}" \
               DEFAULT_COLLECTION="${{ vars.DEFAULT_COLLECTION }}"
 

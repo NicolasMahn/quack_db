@@ -20,11 +20,8 @@ Add these repository secrets:
 - `AZURE_CLIENT_ID`
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
-- `ACR_NAME` (Container Registry resource name, no `.azurecr.io`; same as `deploy.yml`)
+- `ACR_NAME` (Container Registry resource name, no `.azurecr.io`)
 - `AZURE_OPENAI_API_KEY`
-- `API_KEYS`
-- `API_INGEST_KEYS`
-- `UI_API_CLIENT_KEY`
 
 ## 3) Required GitHub Variables
 
@@ -43,19 +40,9 @@ API runtime vars:
 - `AZURE_OPENAI_ENDPOINT`
 - `CHROMADB_HOST` (internal hostname of Chroma in Container Apps)
 - `CHROMADB_PORT` (usually `8000`)
-- `CHROMADB_SSL` (`true`/`false`)
-- `API_AUTH_REQUIRED` (`true`/`false`)
-- `API_RATE_LIMIT_PER_MINUTE` (e.g. `120`)
-- `ENTRA_AUTH_ENABLED` (`true`/`false`)
-- `ENTRA_TENANT_ID`
-- `ENTRA_AUDIENCE`
-- `ENTRA_ISSUER`
-- `ENTRA_JWKS_URL`
-- `RESTRICTED_ROLES` (comma-separated)
-- `INGEST_ROLES` (comma-separated)
-- `RAG_EXECUTION_MODE` (`api` recommended in prod)
-- `INGEST_EXECUTION_MODE` (`api` recommended in prod)
-- `ALLOW_PROD_INGEST` (`false` unless intentional ingest window)
+- `ENTRA_AUDIENCE`, `ENTRA_ISSUER`, `ENTRA_JWKS_URL` (Microsoft Entra JWT validation)
+- `ENTRA_AUTO_PROVISION_TIER` (optional; e.g. `everyone` for JIT users)
+- `AUTH_DISABLED` / `DEV_IMPERSONATE_USER_EMAIL` (**local dev only**)
 
 UI runtime vars:
 - `UI_API_BASE_URL` (public URL of API)
@@ -67,8 +54,8 @@ UI runtime vars:
 
 Deploys are **manual** only (`workflow_dispatch`).
 
-- In GitHub Actions, run **Azure Deploy** (stack) or **Deploy API** (API-only).
-- For **Azure Deploy**, choose:
+- In GitHub Actions, run **Azure Deploy**.
+- Choose:
   - environment: `dev` or `prod`
   - whether to build/deploy each component (`chroma`, `api`, `ui`). Disable **API** or **UI** if you did not change that part; **UI** requires a `./ui` directory in the repo.
 
@@ -80,7 +67,7 @@ Deploys are **manual** only (`workflow_dispatch`).
 ## 6) Post-deploy checks
 
 - API health: `GET /health`
-- Query endpoint rejects missing auth
+- Protected routes reject missing or invalid `Authorization: Bearer`
 - Chroma is not reachable publicly in `prod`
 - UI can query API successfully
 

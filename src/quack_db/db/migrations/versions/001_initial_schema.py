@@ -10,7 +10,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "001"
 down_revision: Union[str, None] = None
@@ -21,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "users",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
         sa.Column("email", sa.String(320), nullable=False),
         sa.Column("tier", sa.String(32), nullable=False),
         sa.Column("is_dev_student", sa.Boolean(), nullable=False, server_default="false"),
@@ -32,8 +31,8 @@ def upgrade() -> None:
 
     op.create_table(
         "api_keys",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("user_id", sa.Uuid(as_uuid=True), nullable=False),
         sa.Column("prefix", sa.String(16), nullable=False),
         sa.Column("key_hash", sa.String(128), nullable=False),
         sa.Column("revoked", sa.Boolean(), nullable=False, server_default="false"),
@@ -45,8 +44,8 @@ def upgrade() -> None:
 
     op.create_table(
         "sessions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("user_id", sa.Uuid(as_uuid=True), nullable=False),
         sa.Column("title", sa.String(512), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
@@ -55,12 +54,12 @@ def upgrade() -> None:
 
     op.create_table(
         "messages",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("id", sa.Uuid(as_uuid=True), primary_key=True),
+        sa.Column("session_id", sa.Uuid(as_uuid=True), nullable=False),
         sa.Column("call_id", sa.String(64), nullable=False),
         sa.Column("role", sa.String(32), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
-        sa.Column("extra_metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("extra_metadata", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="CASCADE"),
     )

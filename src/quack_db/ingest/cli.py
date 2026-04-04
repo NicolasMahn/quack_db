@@ -25,13 +25,16 @@ def main() -> None:
         help="API base URL",
     )
     parser.add_argument(
-        "--api-key",
-        default=os.environ.get("QUACK_API_KEY", ""),
-        help="X-API-Key (or set QUACK_API_KEY)",
+        "--bearer",
+        default=os.environ.get("QUACK_BEARER_TOKEN", ""),
+        help="Authorization bearer: Entra access token for this API (or QUACK_BEARER_TOKEN)",
     )
     args = parser.parse_args()
-    if not args.api_key:
-        raise SystemExit("Set --api-key or QUACK_API_KEY")
+    if not args.bearer:
+        raise SystemExit(
+            "Set --bearer or QUACK_BEARER_TOKEN "
+            "(e.g. az account get-access-token --resource <api-client-id>)"
+        )
 
     resolved = [str(Path(p).resolve()) for p in args.paths]
     ids, docs, metas = build_chunks_for_paths(resolved)
@@ -40,7 +43,7 @@ def main() -> None:
         return
 
     url = args.api_url.rstrip("/") + f"/collections/{args.collection}/add"
-    headers = {"X-API-Key": args.api_key}
+    headers = {"Authorization": f"Bearer {args.bearer}"}
     batch = 100
     with httpx.Client(timeout=120.0) as client:
         for i in range(0, len(docs), batch):

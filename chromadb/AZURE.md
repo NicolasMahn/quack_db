@@ -8,13 +8,13 @@ This file lists **names and wiring only**—no secrets in git. The authoritative
 | ----- | ---- |
 | **Resource group** | Holds all resources |
 | **ACR** | Stores `quack-api` / `quack-ui` images (CI pushes when you run deploy workflows) |
-| **PostgreSQL Flexible** | App DB: `users`, `api_keys`, `sessions`, `messages` |
+| **App DB** | Default **SQLite** file on a mounted share (`quack.db`); optional Postgres later |
 | **Storage account + File share** | Chroma persistence (mount in Chroma Container App) |
 | **ACA environment** | Shared internal DNS for `api` ↔ `chroma` |
 | **Container App `chroma`** | `chromadb/chroma` image, **internal ingress**, volume mount |
 | **Container App `api`** | This repo’s FastAPI image, **external** HTTPS ingress |
 | **Azure OpenAI** | Embeddings + chat (endpoints/keys as ACA secrets) |
-| **SMTP or transactional provider** | Sends API keys to users when SMTP env is set |
+| **Microsoft Entra ID** | Users sign in; API validates JWT (`ENTRA_*` env vars) |
 
 ## Secrets → ACA environment variables (API app)
 
@@ -22,13 +22,15 @@ Set as Container App **secrets** / env (names are illustrative—keep consistent
 
 | Name | Purpose |
 | ---- | ------- |
-| `DATABASE_URL` | `postgresql+psycopg://...` |
+| `DATABASE_URL` | Default in image: `sqlite:////app/data/quack.db` — mount **Azure Files** (or emptyDir + backup) on `/app/data`. For Postgres: `postgresql+psycopg://...` + `[postgres]` extra in image |
 | `ADMIN_BOOTSTRAP_KEY` | One-time bootstrap for `POST /admin/users` when `users` is empty |
 | `CHROMADB_HOST` | Internal hostname of Chroma app |
 | `CHROMADB_PORT` | Usually `8000` |
 | `CHROMADB_AUTH_TOKEN` | Shared token with Chroma server auth |
 | `AZURE_OPENAI_*` / `GOOGLE_API_KEY` | As in `.env.example` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Optional email delivery |
+| `ENTRA_JWKS_URL`, `ENTRA_AUDIENCE`, `ENTRA_ISSUER` | Required unless `AUTH_DISABLED=true` (dev only) |
+| `ENTRA_AUTO_PROVISION_TIER` | Optional: auto-create users on first login |
+| `SMTP_*` | Reserved / optional |
 
 ## Bring-up order
 
@@ -38,11 +40,11 @@ Set as Container App **secrets** / env (names are illustrative—keep consistent
 4. **Deploy Chroma** ACA: mount share, set Chroma token env vars, **internal** only.
 5. **ACR** + push images (see [`.github/README.md`](../.github/README.md)).
 6. **Deploy API** ACA: paste `DATABASE_URL` and other secrets; set `PYTHONPATH=/app` inside image **already** in Dockerfile.
-7. Open public URL → `GET /health` → `POST /admin/users` with `X-Admin-Bootstrap` (empty DB) → capture one-time `api_key` → `POST /auth/validate` → ingest / `POST /rag/query`.
+7. Open public URL → `GET /health` → `POST /admin/users` with `X-Admin-Bootstrap` (empty DB) to seed the first board user (email must match Entra) → sign in and obtain an access token for the API app → `POST /auth/validate` with `Authorization: Bearer` → `/rag/query` and `/collections/...` as usual.
 
 ## CI/CD
 
-GitHub Actions **OIDC** to Azure: see [`.github/README.md`](../.github/README.md). Repository secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `ACR_NAME`, `ACA_RESOURCE_GROUP`, `ACA_API_APP_NAME`.
+GitHub Actions **OIDC** to Azure: see [`.github/README.md`](../.github/README.md) for secrets, variables, and **Azure Deploy** (`azure-deploy.yml`).
 
 ## Links
 

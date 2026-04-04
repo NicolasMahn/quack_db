@@ -8,9 +8,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/quack"
+    # SQLite file (default): cheap for small data. Docker image sets DATABASE_URL=/app/data/...
+    # Postgres: `postgresql+psycopg://user:pass@host:5432/db` and `pip install -e ".[postgres]"`.
+    database_url: str = "sqlite:///./quack.db"
 
     admin_bootstrap_key: str = ""
+
+    # Microsoft Entra ID — access tokens for this API (v2.0, delegated or app).
+    entra_jwks_url: str = ""
+    entra_audience: str = ""
+    entra_issuer: str = ""
+
+    # First-time login: create a DB user with this tier (e.g. "everyone") if set.
+    # Empty => admin must pre-register users by email.
+    entra_auto_provision_tier: str = ""
+
+    # Local / CI only: skip JWT and use this existing user row by email.
+    auth_disabled: bool = False
+    dev_impersonate_user_email: str = ""
 
     chromadb_host: str = "localhost"
     chromadb_port: int = 8000
