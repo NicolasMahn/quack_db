@@ -113,48 +113,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
+    env:
+      # Repository Variables only (branch OIDC). Per-tier overrides: *_PROD / *_DEV.
+      AZURE_RESOURCE_GROUP: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_RESOURCE_GROUP_PROD || vars.AZURE_RESOURCE_GROUP)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_RESOURCE_GROUP_DEV || vars.AZURE_RESOURCE_GROUP)) || vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_LOCATION_PROD || vars.AZURE_LOCATION)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_LOCATION_DEV || vars.AZURE_LOCATION)) || vars.AZURE_LOCATION }}
+      AZURE_CONTAINERAPPS_ENV: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.AZURE_CONTAINERAPPS_ENV_PROD || vars.AZURE_CONTAINERAPPS_ENV)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.AZURE_CONTAINERAPPS_ENV_DEV || vars.AZURE_CONTAINERAPPS_ENV)) || vars.AZURE_CONTAINERAPPS_ENV }}
+      APP_NAME_CHROMA: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.APP_NAME_CHROMA_PROD || vars.APP_NAME_CHROMA)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.APP_NAME_CHROMA_DEV || vars.APP_NAME_CHROMA)) || vars.APP_NAME_CHROMA }}
+      APP_NAME_API: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.APP_NAME_API_PROD || vars.APP_NAME_API)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.APP_NAME_API_DEV || vars.APP_NAME_API)) || vars.APP_NAME_API }}
+      APP_NAME_UI: ${{ (needs.build-and-push.outputs.target_env == 'prod' && (vars.APP_NAME_UI_PROD || vars.APP_NAME_UI)) || (needs.build-and-push.outputs.target_env == 'dev' && (vars.APP_NAME_UI_DEV || vars.APP_NAME_UI)) || vars.APP_NAME_UI }}
     steps:
-      - name: Resolve Azure resource variables
+      - name: Require Azure repository variables
         run: |
           set -euo pipefail
-          te="${{ needs.build-and-push.outputs.target_env }}"
-          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
-          LOC="${{ vars.AZURE_LOCATION }}"
-          CAE="${{ vars.AZURE_CONTAINERAPPS_ENV }}"
-          ACH="${{ vars.APP_NAME_CHROMA }}"
-          AAPI="${{ vars.APP_NAME_API }}"
-          AUI="${{ vars.APP_NAME_UI }}"
-          if [ "$te" = "prod" ]; then
-            [ -n "${{ vars.AZURE_RESOURCE_GROUP_PROD }}" ] && RG="${{ vars.AZURE_RESOURCE_GROUP_PROD }}"
-            [ -n "${{ vars.AZURE_LOCATION_PROD }}" ] && LOC="${{ vars.AZURE_LOCATION_PROD }}"
-            [ -n "${{ vars.AZURE_CONTAINERAPPS_ENV_PROD }}" ] && CAE="${{ vars.AZURE_CONTAINERAPPS_ENV_PROD }}"
-            [ -n "${{ vars.APP_NAME_CHROMA_PROD }}" ] && ACH="${{ vars.APP_NAME_CHROMA_PROD }}"
-            [ -n "${{ vars.APP_NAME_API_PROD }}" ] && AAPI="${{ vars.APP_NAME_API_PROD }}"
-            [ -n "${{ vars.APP_NAME_UI_PROD }}" ] && AUI="${{ vars.APP_NAME_UI_PROD }}"
-          else
-            [ -n "${{ vars.AZURE_RESOURCE_GROUP_DEV }}" ] && RG="${{ vars.AZURE_RESOURCE_GROUP_DEV }}"
-            [ -n "${{ vars.AZURE_LOCATION_DEV }}" ] && LOC="${{ vars.AZURE_LOCATION_DEV }}"
-            [ -n "${{ vars.AZURE_CONTAINERAPPS_ENV_DEV }}" ] && CAE="${{ vars.AZURE_CONTAINERAPPS_ENV_DEV }}"
-            [ -n "${{ vars.APP_NAME_CHROMA_DEV }}" ] && ACH="${{ vars.APP_NAME_CHROMA_DEV }}"
-            [ -n "${{ vars.APP_NAME_API_DEV }}" ] && AAPI="${{ vars.APP_NAME_API_DEV }}"
-            [ -n "${{ vars.APP_NAME_UI_DEV }}" ] && AUI="${{ vars.APP_NAME_UI_DEV }}"
-          fi
-          if [ -z "$RG" ] || [ -z "$LOC" ] || [ -z "$CAE" ]; then
-            echo "::error::AZURE_RESOURCE_GROUP, AZURE_LOCATION, and AZURE_CONTAINERAPPS_ENV must be set as repository Actions variables (not only GitHub Environments). Optional overrides: *_PROD / *_DEV."
-            exit 1
-          fi
-          if [ -z "$ACH" ] || [ -z "$AAPI" ] || [ -z "$AUI" ]; then
-            echo "::error::APP_NAME_CHROMA, APP_NAME_API, and APP_NAME_UI must be set as repository variables (optional *_PROD / *_DEV)."
-            exit 1
-          fi
-          {
-            echo "AZURE_RESOURCE_GROUP=$RG"
-            echo "AZURE_LOCATION=$LOC"
-            echo "AZURE_CONTAINERAPPS_ENV=$CAE"
-            echo "APP_NAME_CHROMA=$ACH"
-            echo "APP_NAME_API=$AAPI"
-            echo "APP_NAME_UI=$AUI"
-          } >> "$GITHUB_ENV"
+          for n in AZURE_RESOURCE_GROUP AZURE_LOCATION AZURE_CONTAINERAPPS_ENV APP_NAME_CHROMA APP_NAME_API APP_NAME_UI; do
+            eval "v=\${$n-}"
+            if [ -z "$v" ]; then
+              echo "::error::$n is empty. Set repository Actions → Variables (see .github/README.md). Values on GitHub Environments are not used by this workflow."
+              exit 1
+            fi
+          done
 
       - name: Normalize ACR name
         run: |

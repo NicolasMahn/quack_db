@@ -5,24 +5,24 @@ import logging
 import os
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-
-from api.auth import RequireAccess, RequireIngestAccess, RequireRestrictedAccess
-from api.models import IngestRequest, QueryRequest, QueryResponse
-from api.rate_limit import RateLimitMiddleware
 from app_config import (
     ALLOW_PROD_INGEST,
     API_AUTH_REQUIRED,
-    APP_ENV,
     API_RATE_LIMIT_PER_MINUTE,
+    APP_ENV,
     ENTRA_AUDIENCE,
     ENTRA_AUTH_ENABLED,
     ENTRA_ISSUER,
     ENTRA_JWKS_URL,
 )
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from ingest.ingest import ingest_directory
 from services.rag_query import query_rag
+
+from api.auth import RequireAccess, RequireIngestAccess, RequireRestrictedAccess
+from api.models import IngestRequest, QueryRequest, QueryResponse
+from api.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger("quack.api")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))

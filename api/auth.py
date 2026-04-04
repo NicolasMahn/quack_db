@@ -5,9 +5,6 @@ from dataclasses import dataclass
 from typing import Callable
 
 import jwt
-from fastapi import Depends, Header, HTTPException, Request, status
-from jwt import PyJWKClient
-
 from app_config import (
     API_AUTH_REQUIRED,
     API_INGEST_KEYS,
@@ -19,6 +16,8 @@ from app_config import (
     INGEST_ROLES,
     RESTRICTED_ROLES,
 )
+from fastapi import Depends, Header, HTTPException, Request, status
+from jwt import PyJWKClient
 
 
 @dataclass
