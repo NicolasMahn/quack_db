@@ -1,0 +1,46 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ACR_NAME: ${{ secrets.ACR_NAME }}
+      ACA_RESOURCE_GROUP: ${{ secrets.ACA_RESOURCE_GROUP }}
+      ACA_API_APP_NAME: ${{ secrets.ACA_API_APP_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name "${{ secrets.ACR_NAME }}"
+
+      - name: Build and push API image
+        run: |
+          IMAGE="${{ secrets.ACR_NAME }}.azurecr.io/quack-api:${{ github.sha }}"
+          docker build -f api/Dockerfile -t "$IMAGE" -t "${{ secrets.ACR_NAME }}.azurecr.io/quack-api:latest" .
+          docker push "$IMAGE"
+          docker push "${{ secrets.ACR_NAME }}.azurecr.io/quack-api:latest"
+
+      - name: Update Container App revision
+        run: |
+          az containerapp update \
+            --name "${{ secrets.ACA_API_APP_NAME }}" \
+            --resource-group "${{ secrets.ACA_RESOURCE_GROUP }}" \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/quack-api:${{ github.sha }}"

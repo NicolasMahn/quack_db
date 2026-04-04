@@ -1,0 +1,298 @@
+name: Azure Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - dev
+          - prod
+      deploy_chroma:
+        description: "Deploy Chroma container app"
+        required: true
+        default: true
+        type: boolean
+      deploy_api:
+        description: "Deploy API container app"
+        required: true
+        default: true
+        type: boolean
+      deploy_ui:
+        description: "Deploy UI container app"
+        required: true
+        default: true
+        type: boolean
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+  AZURE_CONTAINERAPPS_ENV: ${{ vars.AZURE_CONTAINERAPPS_ENV }}
+  AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+  APP_NAME_CHROMA: ${{ vars.APP_NAME_CHROMA }}
+  APP_NAME_API: ${{ vars.APP_NAME_API }}
+  APP_NAME_UI: ${{ vars.APP_NAME_UI }}
+  CHROMA_IMAGE: chromadb/chroma:1.5.0
+  API_PORT: "8001"
+  UI_PORT: "8050"
+  CHROMA_PORT: "8000"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event.inputs.environment != '' }}
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      ui_image: ${{ steps.images.outputs.ui_image }}
+      target_env: ${{ steps.target.outputs.target_env }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve target env
+        id: target
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target_env=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target_env=prod" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name "$AZURE_ACR_NAME"
+
+      - name: Build and push API + UI images
+        id: images
+        run: |
+          set -euo pipefail
+          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TARGET_ENV="${{ steps.target.outputs.target_env }}"
+
+          API_IMAGE="$LOGIN_SERVER/quack-api:${TARGET_ENV}-${SHORT_SHA}"
+          UI_IMAGE="$LOGIN_SERVER/quack-ui:${TARGET_ENV}-${SHORT_SHA}"
+
+          docker build -f Dockerfile.api -t "$API_IMAGE" .
+          docker push "$API_IMAGE"
+
+          docker build -f Dockerfile.ui -t "$UI_IMAGE" .
+          docker push "$UI_IMAGE"
+
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: ${{ needs.build-and-push.outputs.target_env }}
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure containerapp extension
+        run: |
+          az extension add --name containerapp --upgrade --yes
+
+      - name: Ensure resource group exists
+        run: |
+          az group create \
+            --name "$AZURE_RESOURCE_GROUP" \
+            --location "$AZURE_LOCATION"
+
+      - name: Ensure container apps environment exists
+        run: |
+          if ! az containerapp env show \
+            --name "$AZURE_CONTAINERAPPS_ENV" \
+            --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
+            az containerapp env create \
+              --name "$AZURE_CONTAINERAPPS_ENV" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --location "$AZURE_LOCATION"
+          fi
+
+      - name: Resolve environment flags
+        id: flags
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DEPLOY_CHROMA="${{ github.event.inputs.deploy_chroma }}"
+            DEPLOY_API="${{ github.event.inputs.deploy_api }}"
+            DEPLOY_UI="${{ github.event.inputs.deploy_ui }}"
+          else
+            DEPLOY_CHROMA="true"
+            DEPLOY_API="true"
+            DEPLOY_UI="true"
+          fi
+          echo "deploy_chroma=$DEPLOY_CHROMA" >> "$GITHUB_OUTPUT"
+          echo "deploy_api=$DEPLOY_API" >> "$GITHUB_OUTPUT"
+          echo "deploy_ui=$DEPLOY_UI" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Chroma (internal ingress)
+        if: ${{ steps.flags.outputs.deploy_chroma == 'true' }}
+        run: |
+          set -euo pipefail
+          if az containerapp show --name "$APP_NAME_CHROMA" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
+            az containerapp update \
+              --name "$APP_NAME_CHROMA" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --image "$CHROMA_IMAGE" \
+              --set-env-vars APP_ENV="${{ needs.build-and-push.outputs.target_env }}"
+            az containerapp ingress update \
+              --name "$APP_NAME_CHROMA" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --type internal \
+              --target-port "$CHROMA_PORT" \
+              --transport auto
+          else
+            az containerapp create \
+              --name "$APP_NAME_CHROMA" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --environment "$AZURE_CONTAINERAPPS_ENV" \
+              --image "$CHROMA_IMAGE" \
+              --ingress internal \
+              --target-port "$CHROMA_PORT" \
+              --min-replicas 1 \
+              --max-replicas 1 \
+              --env-vars APP_ENV="${{ needs.build-and-push.outputs.target_env }}"
+          fi
+
+      - name: Deploy API
+        if: ${{ steps.flags.outputs.deploy_api == 'true' }}
+        run: |
+          set -euo pipefail
+          API_IMAGE="${{ needs.build-and-push.outputs.api_image }}"
+          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
+          ACR_USER="$(az acr credential show --name "$AZURE_ACR_NAME" --query username -o tsv)"
+          ACR_PASS="$(az acr credential show --name "$AZURE_ACR_NAME" --query 'passwords[0].value' -o tsv)"
+
+          API_KEYS_RAW="${{ secrets.API_KEYS }}"
+          API_INGEST_KEYS_RAW="${{ secrets.API_INGEST_KEYS }}"
+          AZURE_OPENAI_API_KEY_RAW="${{ secrets.AZURE_OPENAI_API_KEY }}"
+
+          if az containerapp show --name "$APP_NAME_API" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
+            az containerapp update \
+              --name "$APP_NAME_API" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --image "$API_IMAGE"
+          else
+            az containerapp create \
+              --name "$APP_NAME_API" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --environment "$AZURE_CONTAINERAPPS_ENV" \
+              --image "$API_IMAGE" \
+              --ingress external \
+              --target-port "$API_PORT" \
+              --registry-server "$LOGIN_SERVER" \
+              --registry-username "$ACR_USER" \
+              --registry-password "$ACR_PASS" \
+              --min-replicas 1 \
+              --max-replicas 3
+          fi
+
+          az containerapp secret set \
+            --name "$APP_NAME_API" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets \
+              "api-keys=$API_KEYS_RAW" \
+              "api-ingest-keys=$API_INGEST_KEYS_RAW" \
+              "azure-openai-api-key=$AZURE_OPENAI_API_KEY_RAW"
+
+          az containerapp update \
+            --name "$APP_NAME_API" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --set-env-vars \
+              APP_ENV="${{ needs.build-and-push.outputs.target_env }}" \
+              API_HOST="0.0.0.0" \
+              API_PORT="$API_PORT" \
+              AZURE_OPENAI_ENDPOINT="${{ vars.AZURE_OPENAI_ENDPOINT }}" \
+              CHROMADB_HOST="${{ vars.CHROMADB_HOST }}" \
+              CHROMADB_PORT="${{ vars.CHROMADB_PORT }}" \
+              CHROMADB_SSL="${{ vars.CHROMADB_SSL }}" \
+              RAG_EXECUTION_MODE="${{ vars.RAG_EXECUTION_MODE }}" \
+              INGEST_EXECUTION_MODE="${{ vars.INGEST_EXECUTION_MODE }}" \
+              ALLOW_PROD_INGEST="${{ vars.ALLOW_PROD_INGEST }}" \
+              API_AUTH_REQUIRED="${{ vars.API_AUTH_REQUIRED }}" \
+              API_RATE_LIMIT_PER_MINUTE="${{ vars.API_RATE_LIMIT_PER_MINUTE }}" \
+              ENTRA_AUTH_ENABLED="${{ vars.ENTRA_AUTH_ENABLED }}" \
+              ENTRA_TENANT_ID="${{ vars.ENTRA_TENANT_ID }}" \
+              ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
+              ENTRA_ISSUER="${{ vars.ENTRA_ISSUER }}" \
+              ENTRA_JWKS_URL="${{ vars.ENTRA_JWKS_URL }}" \
+              RESTRICTED_ROLES="${{ vars.RESTRICTED_ROLES }}" \
+              INGEST_ROLES="${{ vars.INGEST_ROLES }}" \
+              API_KEYS="secretref:api-keys" \
+              API_INGEST_KEYS="secretref:api-ingest-keys" \
+              AZURE_OPENAI_API_KEY="secretref:azure-openai-api-key"
+
+      - name: Deploy UI
+        if: ${{ steps.flags.outputs.deploy_ui == 'true' }}
+        run: |
+          set -euo pipefail
+          UI_IMAGE="${{ needs.build-and-push.outputs.ui_image }}"
+          LOGIN_SERVER="$(az acr show --name "$AZURE_ACR_NAME" --query loginServer -o tsv)"
+          ACR_USER="$(az acr credential show --name "$AZURE_ACR_NAME" --query username -o tsv)"
+          ACR_PASS="$(az acr credential show --name "$AZURE_ACR_NAME" --query 'passwords[0].value' -o tsv)"
+
+          API_CLIENT_KEY_RAW="${{ secrets.UI_API_CLIENT_KEY }}"
+          if az containerapp show --name "$APP_NAME_UI" --resource-group "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
+            az containerapp update \
+              --name "$APP_NAME_UI" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --image "$UI_IMAGE"
+          else
+            az containerapp create \
+              --name "$APP_NAME_UI" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --environment "$AZURE_CONTAINERAPPS_ENV" \
+              --image "$UI_IMAGE" \
+              --ingress external \
+              --target-port "$UI_PORT" \
+              --registry-server "$LOGIN_SERVER" \
+              --registry-username "$ACR_USER" \
+              --registry-password "$ACR_PASS" \
+              --min-replicas 1 \
+              --max-replicas 3
+          fi
+
+          az containerapp secret set \
+            --name "$APP_NAME_UI" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets "ui-api-client-key=$API_CLIENT_KEY_RAW"
+
+          az containerapp update \
+            --name "$APP_NAME_UI" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --set-env-vars \
+              APP_ENV="${{ needs.build-and-push.outputs.target_env }}" \
+              UI_HOST="0.0.0.0" \
+              UI_PORT="$UI_PORT" \
+              API_BASE_URL="${{ vars.UI_API_BASE_URL }}" \
+              RAG_EXECUTION_MODE="${{ vars.RAG_EXECUTION_MODE }}" \
+              INGEST_EXECUTION_MODE="${{ vars.INGEST_EXECUTION_MODE }}" \
+              ENABLE_UI_INGEST="${{ vars.ENABLE_UI_INGEST }}" \
+              ALLOW_PROD_INGEST="${{ vars.ALLOW_PROD_INGEST }}" \
+              API_CLIENT_KEY="secretref:ui-api-client-key" \
+              COLLECTIONS="${{ vars.COLLECTIONS }}" \
+              DEFAULT_COLLECTION="${{ vars.DEFAULT_COLLECTION }}"
+

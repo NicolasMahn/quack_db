@@ -1,0 +1,15 @@
+**
+!Dockerfile.ui
+!Dockerfile.api
+!app_config.py
+!api/
+!api/**
+!services/
+!services/**
+!ui/
+!ui/**
+!ingest/
+!ingest/**
+!requirements.txt
+
+

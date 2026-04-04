@@ -1,16 +1,7 @@
 from openai import AzureOpenAI
-from google import genai
-from google.genai import types
 import tiktoken
 
-from load_secrets import (
-    AZURE_OPENAI_API_VERSION,
-    AZURE_OPENAI_NANO_API_KEY,
-    AZURE_OPENAI_NANO_DEPLOYMENT,
-    AZURE_OPENAI_NANO_ENDPOINT,
-    AZURE_OPENAI_NANO_TEMPERATURE,
-    GOOGLE_KEY,
-)
+from app_config import AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, MODELS
 
 WHITE = "\033[97m"
 BLUE = "\033[34m"
@@ -20,37 +11,23 @@ PINK = "\033[38;5;205m"
 RESET = "\033[0m"
 
 MAX_TOKENS = {
-    "gpt-5-mini": 128000,
+    "gpt-5-nano": 128000,
     "default": 128000,
-    "gpt-4o": 128000,
-    "gpt-4o-mini": 128000,
-    "o1": 200000,
-    "o1-mini": 128000,
-    "o3-mini": 200000,
-    "gemini-2.0-flash": 1048576,
-    "gemini-2.0-flash-thinking-exp": 32767,
-    "gemini-2.0-flash-lite-preview-02-05": 1048576,
-    "learnlm-1.5-pro-experimental": 32000,
 }
 
-# Azure deployment name used for OpenAI models (gpt-4o, gpt-4o-mini, etc.)
+# Azure deployment name used for OpenAI models.
 model_owner = {
-    "azure": ["gpt-4o", "gpt-4o-mini", "o1", "o1-mini", "o3-mini"],
-    "google": [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-thinking-exp",
-        "gemini-2.0-flash-lite-preview-02-05",
-        "learnlm-1.5-pro-experimental",
-    ],
+    "azure": ["gpt-5-nano"],
+    "non_azure_stub": [],
 }
 
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5-nano"
 
 
 def count_context_length(prompt: str, model: str = "default") -> int:
     if model not in MAX_TOKENS or model == "default":
         model = DEFAULT_MODEL
-    if model in model_owner["google"] or model == "gpt-5-mini":
+    if model == "gpt-5-nano":
         return len(prompt.split())
     else:
         encoding = tiktoken.encoding_for_model(model)
@@ -84,8 +61,8 @@ def basic_prompt(
         print(f"{PINK}ROLE:\n{role}{RESET}")
         print(f"{BLUE}PROMPT:\n{prompt}{RESET}")
 
-    if model in model_owner["google"]:
-        response = _basic_prompt_gemini(prompt, role, temperature, model)
+    if model in model_owner["non_azure_stub"]:
+        response = _basic_prompt_non_azure_stub(prompt, role, temperature, model)
     else:
         response = _basic_prompt_azure(prompt, role, temperature, model)
 
@@ -96,29 +73,31 @@ def basic_prompt(
 
 
 def _basic_prompt_azure(prompt: str, role: str, temperature: float, model: str) -> str:
+    model_cfg = MODELS.get(model, MODELS[DEFAULT_MODEL])
     client = AzureOpenAI(
-        api_key=AZURE_OPENAI_NANO_API_KEY,
-        api_version=AZURE_OPENAI_API_VERSION,
-        azure_endpoint=AZURE_OPENAI_NANO_ENDPOINT.rstrip("/"),
+        api_key=AZURE_OPENAI_API_KEY,
+        api_version=model_cfg["api_version"],
+        azure_endpoint=AZURE_OPENAI_ENDPOINT.rstrip("/"),
     )
-    response = client.chat.completions.create(
-        model=AZURE_OPENAI_NANO_DEPLOYMENT,
+    create_kwargs = dict(
+        model=model_cfg.get("deployment", model),
         messages=[
             {"role": "system", "content": role},
             {"role": "user", "content": prompt},
         ],
-        temperature=AZURE_OPENAI_NANO_TEMPERATURE,
     )
+    if model_cfg.get("temperature_setable", True):
+        create_kwargs["temperature"] = temperature
+    response = client.chat.completions.create(**create_kwargs)
     return response.choices[0].message.content
 
 
-def _basic_prompt_gemini(prompt: str, role: str, temperature: float, model: str) -> str:
-    client = genai.Client(api_key=GOOGLE_KEY)
-    role_prompt = f"TASK: {role} \n---\nPROMPT: {prompt}"
-
-    response = client.models.generate_content(
-        model=model,
-        contents=role_prompt,
-        config=types.GenerateContentConfig(temperature=temperature),
+def _basic_prompt_non_azure_stub(
+    prompt: str, role: str, temperature: float, model: str
+) -> str:
+    # Stub intentionally kept for future non-Azure providers.
+    raise NotImplementedError(
+        f"Non-Azure model provider for '{model}' is currently disabled."
     )
-    return response.text
+
+

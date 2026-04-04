@@ -7,13 +7,11 @@ import hashlib
 import os
 from pathlib import Path
 
-import chromadb
-from chromadb.config import Settings
-from pypdf import PdfReader
 from docx import Document
+from pypdf import PdfReader
 
-from load_secrets import CHROMADB_AUTH_TOKEN, CHROMADB_HOST, CHROMADB_PORT
-from embedding_function import openai_ef
+from services.chroma_client import create_http_client
+from services.embedding_function import openai_ef
 
 
 def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 200) -> list[str]:
@@ -73,13 +71,7 @@ def ingest_directory(
     Returns:
         Number of chunks added.
     """
-    client_kwargs = {"host": CHROMADB_HOST, "port": CHROMADB_PORT}
-    if CHROMADB_AUTH_TOKEN:
-        client_kwargs["settings"] = Settings(
-            chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-            chroma_client_auth_credentials=CHROMADB_AUTH_TOKEN,
-        )
-    chroma_client = chromadb.HttpClient(**client_kwargs)
+    chroma_client = create_http_client()
     collection = chroma_client.get_or_create_collection(
         name=collection_name, embedding_function=openai_ef
     )
@@ -97,23 +89,27 @@ def ingest_directory(
             rel_path = str(file_path.relative_to(data_path))
             text = extract_text(str(file_path))
             if not text or not text.strip():
-                print(f"  ⚠ Skipped (no text): {rel_path}")
+                print(f"  [WARN] Skipped (no text): {rel_path}")
                 continue
 
             chunks = chunk_text(text, chunk_size=chunk_size, overlap=overlap)
             doc_name = file_path.name
 
             for i, chunk in enumerate(chunks):
-                chunk_id = hashlib.sha256(f"{rel_path}:{i}:{chunk[:50]}".encode()).hexdigest()[:16]
+                chunk_id = hashlib.sha256(
+                    f"{rel_path}:{i}:{chunk[:50]}".encode()
+                ).hexdigest()[:16]
                 all_ids.append(chunk_id)
                 all_docs.append(chunk)
-                all_metadatas.append({
-                    "source": rel_path,
-                    "pdf_name": doc_name,
-                    "title": f"{doc_name} (chunk {i + 1}/{len(chunks)})",
-                })
+                all_metadatas.append(
+                    {
+                        "source": rel_path,
+                        "pdf_name": doc_name,
+                        "title": f"{doc_name} (chunk {i + 1}/{len(chunks)})",
+                    }
+                )
 
-            print(f"  ✓ {rel_path}: {len(chunks)} chunks")
+            print(f"  [OK] {rel_path}: {len(chunks)} chunks")
 
     if not all_docs:
         print("No documents to ingest.")
@@ -127,7 +123,7 @@ def ingest_directory(
         batch_metadatas = all_metadatas[i : i + batch_size]
         collection.add(ids=batch_ids, documents=batch_docs, metadatas=batch_metadatas)
 
-    print(f"\n✓ Ingested {len(all_docs)} chunks into collection '{collection_name}'")
+    print(f"\n[OK] Ingested {len(all_docs)} chunks into collection '{collection_name}'")
     return len(all_docs)
 
 
@@ -159,10 +155,12 @@ def main():
     )
     args = parser.parse_args()
 
-    base = Path(__file__).parent
-    data_dir = base / args.data_dir if not os.path.isabs(args.data_dir) else Path(args.data_dir)
+    base = Path(__file__).resolve().parent.parent
+    data_dir = (
+        base / args.data_dir if not os.path.isabs(args.data_dir) else Path(args.data_dir)
+    )
 
-    print(f"Ingesting from {data_dir} → collection '{args.collection}'")
+    print(f"Ingesting from {data_dir} -> collection '{args.collection}'")
     print()
     ingest_directory(
         str(data_dir),
@@ -174,3 +172,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

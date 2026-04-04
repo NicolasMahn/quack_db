@@ -1,0 +1,15 @@
+# Optional local Chroma — not required for cloud-first development.
+services:
+  chroma:
+    image: chromadb/chroma:0.5.23
+    environment:
+      CHROMA_SERVER_AUTH_CREDENTIALS: ${CHROMA_SERVER_AUTH_CREDENTIALS:-}
+      CHROMA_SERVER_AUTH_PROVIDER: ${CHROMA_SERVER_AUTH_PROVIDER:-chromadb.auth.token_authn.TokenAuthenticationServerProvider}
+      ANONYMIZED_TELEMETRY: "false"
+    ports:
+      - "${CHROMADB_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+
+volumes:
+  chroma_data:
