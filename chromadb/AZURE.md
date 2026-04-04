@@ -7,7 +7,7 @@ This file lists **names and wiring only**—no secrets in git. The authoritative
 | Piece | Role |
 | ----- | ---- |
 | **Resource group** | Holds all resources |
-| **ACR** | Stores `quack-api` image (CI pushes from `main`) |
+| **ACR** | Stores `quack-api` / `quack-ui` images (CI pushes when you run deploy workflows) |
 | **PostgreSQL Flexible** | App DB: `users`, `api_keys`, `sessions`, `messages` |
 | **Storage account + File share** | Chroma persistence (mount in Chroma Container App) |
 | **ACA environment** | Shared internal DNS for `api` ↔ `chroma` |

@@ -63,14 +63,12 @@ UI runtime vars:
 
 ## 4) Running deployment
 
-### Automatic deploy
-- Push to `main` deploys to `prod` by default.
+Deploys are **manual** only (`workflow_dispatch`).
 
-### Manual deploy
-- In GitHub Actions, run **Azure Deploy**.
-- Choose:
+- In GitHub Actions, run **Azure Deploy** (stack) or **Deploy API** (API-only).
+- For **Azure Deploy**, choose:
   - environment: `dev` or `prod`
-  - whether to deploy each component (`chroma`, `api`, `ui`)
+  - whether to build/deploy each component (`chroma`, `api`, `ui`). Disable **API** or **UI** if you did not change that part; **UI** requires a `./ui` directory in the repo.
 
 ## 5) Suggested protection
 

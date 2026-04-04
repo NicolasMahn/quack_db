@@ -10,7 +10,7 @@ Runs on every **push** to `main` and on **pull requests**:
 
 ## `deploy.yml` (Deploy API)
 
-Runs on **push** to `main` after merge. Builds `api/Dockerfile`, pushes `quack-api` to ACR, updates one API Container App.
+**Manual only** (`workflow_dispatch`). Builds `api/Dockerfile`, pushes `quack-api` to ACR, updates one API Container App.
 
 Uses **OpenID Connect** to Azure (`azure/login@v2`)—no long-lived service principal secret in GitHub if you use **federated credentials** on the app registration (see below).
 
@@ -27,7 +27,7 @@ Uses **OpenID Connect** to Azure (`azure/login@v2`)—no long-lived service prin
 
 ## `azure-deploy.yml` (Azure Deploy)
 
-Runs on **push** to `main` and on **workflow_dispatch** (choose `dev` / `prod`, toggles for Chroma / API / UI). Builds `Dockerfile.api` and `Dockerfile.ui`, can create RG and Container Apps environment, deploys Chroma + API + UI with env vars and secrets.
+**Manual only** (`workflow_dispatch`): choose `dev` / `prod` and toggles **Deploy Chroma / API / UI**. Builds and pushes only what you enable (API uses `api/Dockerfile`; UI uses `Dockerfile.ui` and requires a `./ui` directory). Can create RG and Container Apps environment, then deploys selected apps with env vars and secrets.
 
 - **Secrets:** Same repository secrets as `deploy.yml` for Azure auth and ACR: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, **`ACR_NAME`** (registry resource name only—5–50 alphanumeric chars; optional `.azurecr.io` suffix is stripped). Plus `API_KEYS`, `API_INGEST_KEYS`, `AZURE_OPENAI_API_KEY`, `UI_API_CLIENT_KEY`, and any others referenced in the workflow.
 - **Variables:** `AZURE_RESOURCE_GROUP`, `AZURE_LOCATION`, `AZURE_CONTAINERAPPS_ENV`, `APP_NAME_CHROMA`, `APP_NAME_API`, `APP_NAME_UI`, plus the `vars.*` used in API/UI env blocks (OpenAI, Chroma host, Entra, etc.).
@@ -40,7 +40,7 @@ If `azure/login` fails with **AADSTS70025** (“client has no configured federat
 1. **Entra ID → App registrations →** your app → **Certificates & secrets → Federated credentials → Add credential.**
 2. **Federated credential scenario:** GitHub Actions deploying Azure resources.
 3. **Organization / repository:** your GitHub org or user and repo name (must match where the workflow runs).
-4. **Entity type:** Branch, tag, or pull request — for default `main` runs use branch `main`. For environment-scoped jobs, you can instead add a second credential with entity type **Environment** (`dev`, `prod`).
+4. **Entity type:** Branch, tag, or pull request — for runs triggered from `main`, use branch `main`. If you start the workflow from another branch, add a matching federated credential for that ref. The **`deploy`** job uses GitHub **Environments** (`dev` / `prod`): add federated credentials for `repo:OWNER/REPO:environment:dev` and `environment:prod` as well.
 
 **Subject identifiers** GitHub sends (add one federated credential per subject you need):
 
@@ -76,7 +76,7 @@ Wait a few minutes after IAM changes, then re-run the workflow.
 
 ### Quick outline (`deploy.yml` only)
 
-1. Create an app registration; add federated credential(s) as above (for `deploy.yml`, `repo:OWNER/REPO:ref:refs/heads/main` is enough).
+1. Create an app registration; add federated credential(s) as above (e.g. `repo:OWNER/REPO:ref:refs/heads/main` when you run the workflow from `main`; add other branches if you dispatch from them).
 2. Grant roles on the subscription or resources (ACR push, Container App update).
 3. Fill the secrets in **GitHub → Settings → Secrets and variables → Actions**.
 

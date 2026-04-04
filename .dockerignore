@@ -1,15 +1,12 @@
+# Minimal build context for api/Dockerfile (and Dockerfile.ui when ./ui exists)
 **
-!Dockerfile.ui
-!Dockerfile.api
-!app_config.py
+!pyproject.toml
 !api/
 !api/**
-!services/
-!services/**
+!src/
+!src/**
+!app_config.py
+!requirements.txt
+!Dockerfile.ui
 !ui/
 !ui/**
-!ingest/
-!ingest/**
-!requirements.txt
-
-

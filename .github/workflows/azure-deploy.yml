@@ -26,9 +26,6 @@ on:
         required: true
         default: true
         type: boolean
-  push:
-    branches:
-      - main
 
 permissions:
   id-token: write
@@ -50,7 +47,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.environment != '' }}
     outputs:
       api_image: ${{ steps.images.outputs.api_image }}
       ui_image: ${{ steps.images.outputs.ui_image }}
@@ -61,12 +57,7 @@ jobs:
 
       - name: Resolve target env
         id: target
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "target_env=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "target_env=prod" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "target_env=${{ github.event.inputs.environment }}" >> "$GITHUB_OUTPUT"
 
       - name: Normalize ACR name
         run: |
@@ -90,6 +81,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR login
+        if: ${{ github.event.inputs.deploy_api == 'true' || github.event.inputs.deploy_ui == 'true' }}
         run: az acr login --name "$ACR_NAME"
 
       - name: Build and push API + UI images
@@ -99,18 +91,30 @@ jobs:
           LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
           SHORT_SHA="${GITHUB_SHA::7}"
           TARGET_ENV="${{ steps.target.outputs.target_env }}"
+          DEPLOY_API="${{ github.event.inputs.deploy_api }}"
+          DEPLOY_UI="${{ github.event.inputs.deploy_ui }}"
 
-          API_IMAGE="$LOGIN_SERVER/quack-api:${TARGET_ENV}-${SHORT_SHA}"
-          UI_IMAGE="$LOGIN_SERVER/quack-ui:${TARGET_ENV}-${SHORT_SHA}"
+          if [ "$DEPLOY_API" = "true" ]; then
+            API_IMAGE="$LOGIN_SERVER/quack-api:${TARGET_ENV}-${SHORT_SHA}"
+            docker build -f api/Dockerfile -t "$API_IMAGE" .
+            docker push "$API_IMAGE"
+            echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_image=" >> "$GITHUB_OUTPUT"
+          fi
 
-          docker build -f Dockerfile.api -t "$API_IMAGE" .
-          docker push "$API_IMAGE"
-
-          docker build -f Dockerfile.ui -t "$UI_IMAGE" .
-          docker push "$UI_IMAGE"
-
-          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
-          echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
+          if [ "$DEPLOY_UI" = "true" ]; then
+            if [ ! -d ui ]; then
+              echo "::error::deploy_ui is enabled but there is no ./ui directory in this repo. Disable deploy_ui or add the UI package."
+              exit 1
+            fi
+            UI_IMAGE="$LOGIN_SERVER/quack-ui:${TARGET_ENV}-${SHORT_SHA}"
+            docker build -f Dockerfile.ui -t "$UI_IMAGE" .
+            docker push "$UI_IMAGE"
+            echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
+          else
+            echo "ui_image=" >> "$GITHUB_OUTPUT"
+          fi
 
   deploy:
     runs-on: ubuntu-latest
@@ -163,18 +167,9 @@ jobs:
         id: flags
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            DEPLOY_CHROMA="${{ github.event.inputs.deploy_chroma }}"
-            DEPLOY_API="${{ github.event.inputs.deploy_api }}"
-            DEPLOY_UI="${{ github.event.inputs.deploy_ui }}"
-          else
-            DEPLOY_CHROMA="true"
-            DEPLOY_API="true"
-            DEPLOY_UI="true"
-          fi
-          echo "deploy_chroma=$DEPLOY_CHROMA" >> "$GITHUB_OUTPUT"
-          echo "deploy_api=$DEPLOY_API" >> "$GITHUB_OUTPUT"
-          echo "deploy_ui=$DEPLOY_UI" >> "$GITHUB_OUTPUT"
+          echo "deploy_chroma=${{ github.event.inputs.deploy_chroma }}" >> "$GITHUB_OUTPUT"
+          echo "deploy_api=${{ github.event.inputs.deploy_api }}" >> "$GITHUB_OUTPUT"
+          echo "deploy_ui=${{ github.event.inputs.deploy_ui }}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Chroma (internal ingress)
         if: ${{ steps.flags.outputs.deploy_chroma == 'true' }}
