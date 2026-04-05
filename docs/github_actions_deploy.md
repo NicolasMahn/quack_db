@@ -57,7 +57,7 @@ Deploys are **manual** only (`workflow_dispatch`).
 - In GitHub Actions, run **Azure Deploy**.
 - Choose:
   - environment: `dev` or `prod`
-  - whether to build/deploy each component (`chroma`, `api`, `ui`). Disable **API** or **UI** if you did not change that part; **UI** requires a `./ui` directory in the repo.
+  - for each of **Chroma**, **API**, and **UI**: `true` or `false` (dropdown). Set **UI** to `false` if there is no `./ui` folder. If a run failed after the build skipped the API image, use **Re-run all jobs** so `api_image` is produced again.
 
 ## 5) Suggested protection
 

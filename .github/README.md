@@ -82,7 +82,7 @@ Workflow sets container env `API_BASE_URL` from **`UI_API_BASE_URL`**.
 
 ## `azure-deploy.yml` (Azure Deploy)
 
-**Manual only** (`workflow_dispatch`): **Target environment** `dev` / `prod` and toggles **Deploy Chroma / API / UI**. Builds only what you enable (`api/Dockerfile`; UI needs `./ui`). Image tags look like `quack-api:{env}-{shortSha}`.
+**Manual only** (`workflow_dispatch`): **Target environment** `dev` / `prod` and per-component **true/false** choices for **Chroma / API / UI** (string choices so the build and deploy jobs agree). Builds only what you enable (`api/Dockerfile`; UI needs `./ui`— leave UI **false** if the folder is missing). Image tags look like `quack-api:{env}-{shortSha}` (and `:latest`). After changing workflow inputs, use **Re-run all jobs** if a previous run skipped the build but still tried to deploy.
 
 Configure **Secrets** and **Variables** above. Resource group, region, Container Apps environment, and `APP_NAME_*` values come **only** from **Variables**.
 

@@ -14,18 +14,27 @@ on:
       deploy_chroma:
         description: "Deploy Chroma container app"
         required: true
-        default: true
-        type: boolean
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
       deploy_api:
         description: "Deploy API container app"
         required: true
-        default: true
-        type: boolean
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
       deploy_ui:
-        description: "Deploy UI container app"
+        description: "Deploy UI container app (needs ./ui in repo)"
         required: true
-        default: true
-        type: boolean
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 permissions:
   id-token: write
