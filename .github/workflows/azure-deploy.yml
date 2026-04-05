@@ -92,6 +92,9 @@ jobs:
             API_IMAGE="$LOGIN_SERVER/quack-api:${TARGET_ENV}-${SHORT_SHA}"
             docker build -f api/Dockerfile -t "$API_IMAGE" .
             docker push "$API_IMAGE"
+            # Also push :latest so existing Container Apps that still reference latest (e.g. manual setup) resolve.
+            docker tag "$API_IMAGE" "$LOGIN_SERVER/quack-api:latest"
+            docker push "$LOGIN_SERVER/quack-api:latest"
             echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
           else
             echo "api_image=" >> "$GITHUB_OUTPUT"
@@ -105,6 +108,8 @@ jobs:
             UI_IMAGE="$LOGIN_SERVER/quack-ui:${TARGET_ENV}-${SHORT_SHA}"
             docker build -f Dockerfile.ui -t "$UI_IMAGE" .
             docker push "$UI_IMAGE"
+            docker tag "$UI_IMAGE" "$LOGIN_SERVER/quack-ui:latest"
+            docker push "$LOGIN_SERVER/quack-ui:latest"
             echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
           else
             echo "ui_image=" >> "$GITHUB_OUTPUT"
@@ -217,6 +222,10 @@ jobs:
         run: |
           set -euo pipefail
           API_IMAGE="${{ needs.build-and-push.outputs.api_image }}"
+          if [ -z "$API_IMAGE" ]; then
+            echo "::error::api_image is empty — ensure Deploy API was enabled in the workflow dispatch."
+            exit 1
+          fi
           LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
@@ -272,6 +281,10 @@ jobs:
         run: |
           set -euo pipefail
           UI_IMAGE="${{ needs.build-and-push.outputs.ui_image }}"
+          if [ -z "$UI_IMAGE" ]; then
+            echo "::error::ui_image is empty — enable Deploy UI only when ./ui exists and build ran."
+            exit 1
+          fi
           LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
