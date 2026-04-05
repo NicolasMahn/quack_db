@@ -51,8 +51,10 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     outputs:
-      api_image: ${{ steps.images.outputs.api_image }}
-      ui_image: ${{ steps.images.outputs.ui_image }}
+      # Image refs include the ACR host; GitHub skips job outputs that match secrets (e.g. ACR_NAME).
+      # Pass only tags; deploy reconstructs ${{ registry }}/quack-api:${{ tag }}.
+      api_image_tag: ${{ steps.images.outputs.api_image_tag }}
+      ui_image_tag: ${{ steps.images.outputs.ui_image_tag }}
       target_env: ${{ steps.target.outputs.target_env }}
     steps:
       - name: Checkout
@@ -98,15 +100,16 @@ jobs:
           DEPLOY_UI="${{ github.event.inputs.deploy_ui }}"
 
           if [ "$DEPLOY_API" = "true" ]; then
-            API_IMAGE="$LOGIN_SERVER/quack-api:${TARGET_ENV}-${SHORT_SHA}"
+            TAG="${TARGET_ENV}-${SHORT_SHA}"
+            API_IMAGE="$LOGIN_SERVER/quack-api:$TAG"
             docker build -f api/Dockerfile -t "$API_IMAGE" .
             docker push "$API_IMAGE"
             # Also push :latest so existing Container Apps that still reference latest (e.g. manual setup) resolve.
             docker tag "$API_IMAGE" "$LOGIN_SERVER/quack-api:latest"
             docker push "$LOGIN_SERVER/quack-api:latest"
-            echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+            echo "api_image_tag=$TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "api_image=" >> "$GITHUB_OUTPUT"
+            echo "api_image_tag=" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$DEPLOY_UI" = "true" ]; then
@@ -114,14 +117,15 @@ jobs:
               echo "::error::deploy_ui is enabled but there is no ./ui directory in this repo. Disable deploy_ui or add the UI package."
               exit 1
             fi
-            UI_IMAGE="$LOGIN_SERVER/quack-ui:${TARGET_ENV}-${SHORT_SHA}"
+            TAG="${TARGET_ENV}-${SHORT_SHA}"
+            UI_IMAGE="$LOGIN_SERVER/quack-ui:$TAG"
             docker build -f Dockerfile.ui -t "$UI_IMAGE" .
             docker push "$UI_IMAGE"
             docker tag "$UI_IMAGE" "$LOGIN_SERVER/quack-ui:latest"
             docker push "$LOGIN_SERVER/quack-ui:latest"
-            echo "ui_image=$UI_IMAGE" >> "$GITHUB_OUTPUT"
+            echo "ui_image_tag=$TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "ui_image=" >> "$GITHUB_OUTPUT"
+            echo "ui_image_tag=" >> "$GITHUB_OUTPUT"
           fi
 
   deploy:
@@ -230,12 +234,13 @@ jobs:
         if: ${{ steps.flags.outputs.deploy_api == 'true' }}
         run: |
           set -euo pipefail
-          API_IMAGE="${{ needs.build-and-push.outputs.api_image }}"
-          if [ -z "$API_IMAGE" ]; then
-            echo "::error::api_image is empty — ensure Deploy API was enabled in the workflow dispatch."
+          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          TAG="${{ needs.build-and-push.outputs.api_image_tag }}"
+          if [ -z "$TAG" ]; then
+            echo "::error::api_image_tag is empty — enable Deploy API in workflow dispatch so the image is built."
             exit 1
           fi
-          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          API_IMAGE="$LOGIN_SERVER/quack-api:$TAG"
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 
@@ -289,12 +294,13 @@ jobs:
         if: ${{ steps.flags.outputs.deploy_ui == 'true' }}
         run: |
           set -euo pipefail
-          UI_IMAGE="${{ needs.build-and-push.outputs.ui_image }}"
-          if [ -z "$UI_IMAGE" ]; then
-            echo "::error::ui_image is empty — enable Deploy UI only when ./ui exists and build ran."
+          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          TAG="${{ needs.build-and-push.outputs.ui_image_tag }}"
+          if [ -z "$TAG" ]; then
+            echo "::error::ui_image_tag is empty — enable Deploy UI only when ./ui exists and build ran."
             exit 1
           fi
-          LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          UI_IMAGE="$LOGIN_SERVER/quack-ui:$TAG"
           ACR_USER="$(az acr credential show --name "$ACR_NAME" --query username -o tsv)"
           ACR_PASS="$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)"
 

@@ -57,7 +57,7 @@ Deploys are **manual** only (`workflow_dispatch`).
 - In GitHub Actions, run **Azure Deploy**.
 - Choose:
   - environment: `dev` or `prod`
-  - for each of **Chroma**, **API**, and **UI**: `true` or `false` (dropdown). Set **UI** to `false` if there is no `./ui` folder. If a run failed after the build skipped the API image, use **Re-run all jobs** so `api_image` is produced again.
+  - for each of **Chroma**, **API**, and **UI**: `true` or `false` (dropdown). Set **UI** to `false` if there is no `./ui` folder. If a run failed after the build was skipped, use **Re-run all jobs** so image tags are produced again.
 
 ## 5) Suggested protection
 
