@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,38 @@ class Settings(BaseSettings):
     def _empty_chromadb_port_to_default(cls, v):
         if v is None or v == "":
             return 8000
+        return v
+
+    # GitHub Actions / Container Apps often inject missing vars as "" which breaks bool/int parsing.
+    @field_validator("auth_disabled", "smtp_use_tls", "run_migrations_on_startup", mode="before")
+    @classmethod
+    def _empty_string_bool_defaults(cls, v, info: ValidationInfo):
+        defaults = {
+            "auth_disabled": False,
+            "smtp_use_tls": True,
+            "run_migrations_on_startup": True,
+        }
+        if v is None or v == "":
+            return defaults[info.field_name]
+        return v
+
+    @field_validator("smtp_port", "rag_n_results_cap", "chroma_n_results_cap", mode="before")
+    @classmethod
+    def _empty_string_int_defaults(cls, v, info: ValidationInfo):
+        defaults = {
+            "smtp_port": 587,
+            "rag_n_results_cap": 50,
+            "chroma_n_results_cap": 100,
+        }
+        if v is None or v == "":
+            return defaults[info.field_name]
+        return v
+
+    @field_validator("azure_openai_nano_temperature", mode="before")
+    @classmethod
+    def _empty_string_float_default(cls, v):
+        if v is None or v == "":
+            return 1.0
         return v
 
     azure_openai_endpoint: str = "https://example.openai.azure.com/"
