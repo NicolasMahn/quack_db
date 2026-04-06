@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     admin_bootstrap_key: str = ""
 
-    # Microsoft Entra ID — access tokens for this API (v2.0, delegated or app).
+    # Microsoft Entra ID — JWT validation (v2.0 + legacy v1 issuers; see entra_tenant_id defaults).
     entra_jwks_url: str = ""
     entra_audience: str = ""
     entra_issuer: str = ""
@@ -101,13 +101,19 @@ class Settings(BaseSettings):
     rag_n_results_cap: int = 50
     chroma_n_results_cap: int = 100
 
-    @field_validator("entra_jwks_url", "entra_audience", "entra_issuer", mode="after")
+    @field_validator("entra_jwks_url", "entra_audience", mode="after")
     @classmethod
-    def _normalize_entra_strings(cls, v: str) -> str:
+    def _normalize_entra_urls_and_audience(cls, v: str) -> str:
         v = (v or "").strip()
         if not v:
             return v
         return v.rstrip("/")
+
+    @field_validator("entra_issuer", mode="after")
+    @classmethod
+    def _normalize_entra_issuer(cls, v: str) -> str:
+        # Do not strip trailing "/" — v1 tokens use https://sts.windows.net/<tid>/
+        return (v or "").strip()
 
     @field_validator("entra_tenant_id", mode="after")
     @classmethod
@@ -120,7 +126,11 @@ class Settings(BaseSettings):
         if not tid:
             return self
         if not self.entra_issuer:
-            self.entra_issuer = f"https://login.microsoftonline.com/{tid}/v2.0"
+            # Device code / some clients issue v1.0 tokens (iss sts.windows.net); others use v2.0.
+            self.entra_issuer = (
+                f"https://login.microsoftonline.com/{tid}/v2.0,"
+                f"https://sts.windows.net/{tid}/"
+            )
         if not self.entra_jwks_url:
             self.entra_jwks_url = (
                 f"https://login.microsoftonline.com/{tid}/discovery/v2.0/keys"

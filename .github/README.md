@@ -63,7 +63,7 @@ If you still have old secrets **`ACA_RESOURCE_GROUP`** / **`ACA_API_APP_NAME`**,
 | `ENTRA_AUDIENCE` | **Yes** | `""` | API app scope / Application ID URI audience. |
 | `ENTRA_TENANT_ID` | **Yes*** | `""` | Directory (tenant) GUID. When set, defaults `ENTRA_ISSUER` and `ENTRA_JWKS_URL` to the usual single-tenant v2.0 URLs if those are empty. |
 | `ENTRA_JWKS_URL` | **Yes*** | `""` | Override JWKS URL, or leave empty when `ENTRA_TENANT_ID` is set. |
-| `ENTRA_ISSUER` | **Yes*** | `""` | Override issuer(s), or leave empty when `ENTRA_TENANT_ID` is set. Multiple comma-separated values allowed (rare). |
+| `ENTRA_ISSUER` | **Yes*** | `""` | Override issuer(s), or leave empty when `ENTRA_TENANT_ID` is set. Some flows issue **v1** tokens (`iss` = `https://sts.windows.net/<tid>/`); the tenant-id default allows both v1 and v2 issuers. |
 | `ENTRA_AUTO_PROVISION_TIER` | Optional | `""` | If set (e.g. `everyone`), first Entra login creates a DB user with that tier. Empty = admin must pre-create users by email. |
 | `AUTH_DISABLED` | **Never in prod** | `false` | If `true`, API uses `DEV_IMPERSONATE_USER_EMAIL` (local dev only). |
 | `DEV_IMPERSONATE_USER_EMAIL` | With `AUTH_DISABLED` | `""` | Existing `users.email` row to impersonate. |

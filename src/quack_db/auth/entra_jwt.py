@@ -13,9 +13,8 @@ def _issuer_value_for_pyjwt(issuer: str) -> str | tuple[str, ...] | None:
     issuer = (issuer or "").strip()
     if not issuer:
         return None
-    parts = tuple(
-        p.strip().rstrip("/") for p in issuer.split(",") if p.strip()
-    )
+    # Issuer strings must match the token's `iss` claim exactly (incl. sts.windows.net trailing /).
+    parts = tuple(p.strip() for p in issuer.split(",") if p.strip())
     if not parts:
         return None
     if len(parts) == 1:
