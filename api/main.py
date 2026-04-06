@@ -20,11 +20,19 @@ def _run_migrations() -> None:
         return
     import quack_db
 
-    ini = Path(quack_db.__file__).resolve().parent.parent / "alembic.ini"
+    pkg_root = Path(quack_db.__file__).resolve().parent
+    ini = pkg_root.parent / "alembic.ini"
     if not ini.is_file():
         log.warning("alembic.ini not found; skipping migrations")
         return
+    migrations_dir = pkg_root / "db" / "migrations"
+    if not migrations_dir.is_dir():
+        log.warning("Alembic migrations dir missing at %s; skipping", migrations_dir)
+        return
     cfg = AlembicConfig(str(ini))
+    # alembic.ini uses a relative script_location; under Docker WORKDIR=/app that resolves to
+    # /app/quack_db/... which does not exist (package lives under /app/src/...).
+    cfg.set_main_option("script_location", str(migrations_dir))
     command.upgrade(cfg, "head")
 
 

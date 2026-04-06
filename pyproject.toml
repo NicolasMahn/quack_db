@@ -50,7 +50,12 @@ where = ["src"]
 include = ["quack_db*"]
 
 [tool.setuptools.package-data]
-quack_db = ["config.yaml"]
+quack_db = [
+    "config.yaml",
+    "db/migrations/env.py",
+    "db/migrations/script.py.mako",
+    "db/migrations/versions/*.py",
+]
 
 [tool.ruff]
 line-length = 100
