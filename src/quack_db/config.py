@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     rag_n_results_cap: int = 50
     chroma_n_results_cap: int = 100
 
+    @field_validator("entra_jwks_url", "entra_audience", "entra_issuer", mode="after")
+    @classmethod
+    def _normalize_entra_strings(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            return v
+        return v.rstrip("/")
+
 
 @lru_cache
 def get_settings() -> Settings:
