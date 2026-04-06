@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     entra_jwks_url: str = ""
     entra_audience: str = ""
     entra_issuer: str = ""
+    # When set, fills ENTRA_ISSUER / ENTRA_JWKS_URL with the usual single-tenant v2.0 URLs
+    # if those are empty (stable defaults from the directory (tenant) ID).
+    entra_tenant_id: str = ""
 
     # First-time login: create a DB user with this tier (e.g. "everyone") if set.
     # Empty => admin must pre-register users by email.
@@ -105,6 +108,24 @@ class Settings(BaseSettings):
         if not v:
             return v
         return v.rstrip("/")
+
+    @field_validator("entra_tenant_id", mode="after")
+    @classmethod
+    def _normalize_entra_tenant_id(cls, v: str) -> str:
+        return (v or "").strip()
+
+    @model_validator(mode="after")
+    def _entra_defaults_from_tenant_id(self):
+        tid = self.entra_tenant_id
+        if not tid:
+            return self
+        if not self.entra_issuer:
+            self.entra_issuer = f"https://login.microsoftonline.com/{tid}/v2.0"
+        if not self.entra_jwks_url:
+            self.entra_jwks_url = (
+                f"https://login.microsoftonline.com/{tid}/discovery/v2.0/keys"
+            )
+        return self
 
 
 @lru_cache

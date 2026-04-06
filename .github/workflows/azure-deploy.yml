@@ -284,6 +284,7 @@ jobs:
               CHROMADB_HOST="${{ vars.CHROMADB_HOST }}" \
               CHROMADB_PORT="${{ vars.CHROMADB_PORT }}" \
               ENTRA_AUDIENCE="${{ vars.ENTRA_AUDIENCE }}" \
+              ENTRA_TENANT_ID="${{ vars.ENTRA_TENANT_ID }}" \
               ENTRA_ISSUER="${{ vars.ENTRA_ISSUER }}" \
               ENTRA_JWKS_URL="${{ vars.ENTRA_JWKS_URL }}" \
               ENTRA_AUTO_PROVISION_TIER="${{ vars.ENTRA_AUTO_PROVISION_TIER }}" \
