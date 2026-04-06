@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +31,13 @@ class Settings(BaseSettings):
     chromadb_host: str = "localhost"
     chromadb_port: int = 8000
     chromadb_auth_token: str = ""
+
+    @field_validator("chromadb_port", mode="before")
+    @classmethod
+    def _empty_chromadb_port_to_default(cls, v):
+        if v is None or v == "":
+            return 8000
+        return v
 
     azure_openai_endpoint: str = "https://example.openai.azure.com/"
     azure_openai_api_key: str = ""

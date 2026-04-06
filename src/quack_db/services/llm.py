@@ -1,8 +1,6 @@
 """LLM calls (ported from llm_api_wrapper)."""
 
 import tiktoken
-from google import genai
-from google.genai import types
 from openai import AzureOpenAI
 
 from quack_db.config import get_settings
@@ -85,6 +83,14 @@ def _basic_prompt_azure(prompt: str, role: str, temperature: float, model: str) 
 
 
 def _basic_prompt_gemini(prompt: str, role: str, temperature: float, model: str) -> str:
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise ImportError(
+            "Gemini models require the google-genai package: pip install google-genai"
+        ) from exc
+
     s = get_settings()
     client = genai.Client(api_key=s.google_api_key)
     role_prompt = f"TASK: {role} \n---\nPROMPT: {prompt}"

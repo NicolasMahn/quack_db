@@ -262,6 +262,7 @@ jobs:
               --registry-server "$LOGIN_SERVER" \
               --registry-username "$ACR_USER" \
               --registry-password "$ACR_PASS" \
+              --env-vars "API_PORT=$API_PORT" \
               --min-replicas 1 \
               --max-replicas 3
           fi

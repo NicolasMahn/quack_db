@@ -19,7 +19,8 @@ COPY api /app/api
 RUN pip install --no-cache-dir pip \
     && pip install --no-cache-dir -e .
 
-EXPOSE 8000
+# Must match azure-deploy.yml target-port (ACA sends traffic here).
+EXPOSE 8001
 
-ENV API_PORT=8000
+ENV API_PORT=8001
 CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port ${API_PORT}"]
